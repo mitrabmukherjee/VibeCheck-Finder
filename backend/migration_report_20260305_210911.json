@@ -1,0 +1,13 @@
+{
+  "status": "completed",
+  "total_items": 6332,
+  "successful": 6332,
+  "failed": 0,
+  "duration_seconds": 587.363413,
+  "errors": [],
+  "failed_items": [],
+  "backup_location": "backend\\backups\\tfidf_20260305_205923",
+  "new_collection": "file_vector_db_sbert",
+  "old_collection": "file_vector_db_tfidf",
+  "dry_run": false
+}

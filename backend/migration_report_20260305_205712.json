@@ -1,0 +1,15 @@
+{
+  "status": "failed",
+  "total_items": 0,
+  "successful": 0,
+  "failed": 0,
+  "duration_seconds": 0.005219,
+  "errors": [
+    "Backup verification failed"
+  ],
+  "failed_items": [],
+  "backup_location": "backend\\backups\\tfidf_20260305_205712",
+  "new_collection": "file_vector_db_sbert",
+  "old_collection": "file_vector_db_tfidf",
+  "dry_run": false
+}

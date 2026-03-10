@@ -1,0 +1,15 @@
+{
+  "status": "failed",
+  "total_items": 5781,
+  "successful": 0,
+  "failed": 0,
+  "duration_seconds": 6.437513,
+  "errors": [
+    "'NoneType' object has no attribute 'get_embedding_dimension'"
+  ],
+  "failed_items": [],
+  "backup_location": "backend\\backups\\tfidf_20260310_221040",
+  "new_collection": "file_vector_db_sbert",
+  "old_collection": "file_vector_db_tfidf",
+  "dry_run": false
+}

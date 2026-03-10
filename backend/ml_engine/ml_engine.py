@@ -182,7 +182,7 @@ class MLEngine:
         Returns:
             numpy array of shape (1, dimension) containing the query embedding
             - For TF-IDF: shape (1, ~5000)
-            - For Sentence-BERT: shape (1, 384)
+            - For Sentence-BERT: shape (1, 384) for all-MiniLM-L6-v2 or (1, 768) for all-mpnet-base-v2
         
         Raises:
             ValueError: If query is empty after preprocessing or vector has zero norm
@@ -279,7 +279,8 @@ class MLEngine:
             query: User's natural language search query
         
         Returns:
-            numpy array of shape (1, 384) containing the query embedding
+            numpy array of shape (1, dimension) containing the query embedding
+            - Dimension depends on the model (384 for all-MiniLM-L6-v2, 768 for all-mpnet-base-v2)
         
         Raises:
             ValueError: If query is empty or vector contains non-finite values
@@ -297,17 +298,20 @@ class MLEngine:
             )
         
         # Encode the query using Sentence-BERT
-        # The encode method returns shape (1, 384) for single text input
+        # The encode method returns shape (1, dimension) for single text input
         query_vector = self.sbert_vectorizer.encode(
             query.strip(),
             normalize_embeddings=True
         )
         
+        # Get expected dimension from the model
+        expected_dim = self.sbert_vectorizer.get_embedding_dimension()
+        
         # Validate output vector shape
         assert query_vector.shape[0] == 1, \
             f"Query vector must have shape (1, d), got shape {query_vector.shape}"
-        assert query_vector.shape[1] == 384, \
-            f"Sentence-BERT vector must have 384 dimensions, got {query_vector.shape[1]}"
+        assert query_vector.shape[1] == expected_dim, \
+            f"Sentence-BERT vector must have {expected_dim} dimensions, got {query_vector.shape[1]}"
         
         # Validate all values are finite floats
         if not np.all(np.isfinite(query_vector)):

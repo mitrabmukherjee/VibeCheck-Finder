@@ -23,7 +23,6 @@ from ml_engine.hybrid_search import HybridSearchEngine
 from database.postgres import PostgresDatabase
 from database.vector_db import VectorDatabase
 from database.file_vector_db import FileVectorDatabase
-from services.tmdb_service import TMDBService
 
 # Load environment variables
 load_dotenv()
@@ -106,10 +105,9 @@ logger.info(f"CORS enabled for origins: {cors_origins}")
 
 # Initialize components
 ml_engine: MLEngine = None
-hybrid_search: HybridSearchEngine = None
 postgres_db: PostgresDatabase = None
 vector_db = None  # Can be VectorDatabase or FileVectorDatabase
-tmdb_service: TMDBService = None
+hybrid_search: HybridSearchEngine = None
 
 
 @app.on_event("startup")
@@ -123,7 +121,7 @@ async def startup_event():
         - 5.5: Ensure API functionality unchanged
         - 7.1: Initialize MLEngine with vectorizer_type from environment
     """
-    global ml_engine, hybrid_search, postgres_db, vector_db, tmdb_service
+    global ml_engine, postgres_db, vector_db, hybrid_search
     
     try:
         # Get vectorizer configuration from environment
@@ -131,11 +129,10 @@ async def startup_event():
         sbert_model_name = os.getenv("SBERT_MODEL_NAME", "all-MiniLM-L6-v2")
         vectorizer_path = os.getenv("VECTORIZER_PATH", "backend/models")
         embeddings_path = os.getenv("EMBEDDINGS_PATH", "backend/embeddings")
-        use_hybrid = os.getenv("USE_HYBRID_SEARCH", "true").lower() == "true"
         
         # Determine vector size based on vectorizer type
         if vectorizer_type == "sbert":
-            default_vector_size = 384
+            default_vector_size = 768
         else:
             default_vector_size = 5000
         
@@ -175,33 +172,17 @@ async def startup_event():
             )
             logger.info(f"Qdrant Vector Database initialized (vector_size={vector_size})")
         
-        # Initialize Hybrid Search if enabled and using Sentence-BERT
-        if use_hybrid and vectorizer_type == "sbert" and ml_engine.sbert_vectorizer:
+        # Initialize Hybrid Search Engine
+        use_hybrid = os.getenv("USE_HYBRID_SEARCH", "true").lower() == "true"
+        if use_hybrid:
             logger.info("Initializing Hybrid Search Engine...")
-            hybrid_search = HybridSearchEngine(
-                sbert_vectorizer=ml_engine.sbert_vectorizer,
-                tfidf_weight=0.3,
-                sbert_weight=0.7
-            )
+            hybrid_search = HybridSearchEngine(title_weight=0.5, semantic_weight=0.5)
             
-            # Load corpus data for hybrid search
-            if vector_db.count() > 0:
-                logger.info("Loading corpus for hybrid search...")
-                # Get all media from database
-                all_media = postgres_db.get_all_media()
-                texts = [f"{m['title']} {m['description']}" for m in all_media]
-                ids = [m['id'] for m in all_media]
-                
-                # Index corpus
-                hybrid_search.index_corpus(texts, ids, batch_size=32)
-                logger.info(f"Hybrid search indexed {len(ids)} items")
-        
-        # Initialize TMDB Service
-        tmdb_service = TMDBService()
-        if tmdb_service.api_key:
-            logger.info("TMDB Service initialized")
-        else:
-            logger.warning("TMDB Service initialized without API key (posters disabled)")
+            # Index all media titles
+            logger.info("Loading corpus for hybrid search...")
+            all_media = postgres_db.get_all_media()
+            hybrid_search.index_corpus(all_media)
+            logger.info(f"Hybrid Search Engine initialized with {len(all_media)} items")
         
     except Exception as e:
         logger.error(f"Error during startup: {e}")
@@ -358,28 +339,43 @@ async def recommend(request: RecommendationRequest) -> RecommendationResponse:
         
         # Step 2: Search for similar items in Vector DB
         try:
-            # Use hybrid search if available, otherwise fall back to vector search
+            # Convert numpy array to list for vector_db
+            query_vector_list = query_vector[0].tolist()
+            
+            # Note: We request more results than top_k to account for filtering
+            # that will be applied later in the application layer
+            # Request 3x to ensure we have enough results after filtering
+            search_top_k = request.top_k * 3 if request.filters else request.top_k
+            
+            # Get semantic search results
+            semantic_results = vector_db.search(
+                query_vector=query_vector_list,
+                top_k=search_top_k,
+                filter=None  # Apply filters in application layer for flexibility
+            )
+            
+            # Apply hybrid search if enabled
             if hybrid_search is not None:
-                logger.debug("Using hybrid search (TF-IDF + Sentence-BERT)")
+                logger.debug("Using hybrid search (title matching + semantic)")
                 search_results = hybrid_search.search(
                     query=request.query,
-                    top_k=request.top_k * 2 if request.filters else request.top_k
+                    semantic_results=semantic_results,
+                    top_k=search_top_k
                 )
             else:
-                logger.debug("Using vector search only")
-                # Convert numpy array to list for vector_db
-                query_vector_list = query_vector[0].tolist()
-                
-                # Note: We request more results than top_k to account for filtering
-                # that will be applied later in the application layer
-                search_top_k = request.top_k * 2 if request.filters else request.top_k
-                
-                search_results = vector_db.search(
-                    query_vector=query_vector_list,
-                    top_k=search_top_k,
-                    filter=None  # Apply filters in application layer for flexibility
-                )
-            logger.debug(f"Search returned {len(search_results)} results")
+                logger.debug("Using semantic search only")
+                search_results = semantic_results
+            
+            # Deduplicate results by ID
+            seen_ids = set()
+            unique_results = []
+            for result in search_results:
+                if result['id'] not in seen_ids:
+                    seen_ids.add(result['id'])
+                    unique_results.append(result)
+            search_results = unique_results
+            
+            logger.debug(f"Search returned {len(search_results)} unique results")
         except Exception as e:
             # Handle database unavailability
             # Requirements: 10.4
@@ -474,17 +470,6 @@ async def recommend(request: RecommendationRequest) -> RecommendationResponse:
             
             # Create MediaMetadata object
             metadata_dict = media.get("metadata", {})
-            
-            # Fetch TMDB poster if not already present
-            if tmdb_service and tmdb_service.api_key and not metadata_dict.get("thumbnail_url"):
-                poster_url = tmdb_service.fetch_poster_for_media(
-                    title=media["title"],
-                    media_type="movie" if media["media_type"] == "book" else "tv_show",
-                    year=metadata_dict.get("year")
-                )
-                if poster_url:
-                    metadata_dict["thumbnail_url"] = poster_url
-            
             metadata = MediaMetadata(**metadata_dict)
             
             # Create MediaRecommendation object

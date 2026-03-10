@@ -67,7 +67,7 @@ def validate_embedding_dimensions(
     sample_texts: List[str]
 ) -> Dict[str, Any]:
     """
-    Validate that all embeddings have exactly 384 dimensions.
+    Validate that all embeddings have exactly768  dimensions.
     
     Requirements: 9.3, 1.4, 2.2
     """
@@ -83,7 +83,7 @@ def validate_embedding_dimensions(
     for i, text in enumerate(sample_texts):
         embedding = vectorizer.encode(text)
         
-        if embedding.shape == (1, 384):
+        if embedding.shape == (1, 768):
             results["correct_dimension"] += 1
         else:
             results["incorrect_dimension"] += 1
@@ -302,7 +302,7 @@ def validate_embeddings(
     Validate Sentence-BERT embedding quality.
     
     This function performs comprehensive validation of Sentence-BERT embeddings:
-    1. Validates embedding dimensions (384)
+    1. Validates embedding dimensions (768)
     2. Validates all values are finite
     3. Validates encoding idempotence
     4. Compares search results with TF-IDF (if available)
@@ -320,7 +320,7 @@ def validate_embeddings(
     Requirements:
         - 9.1: Provide validation script comparing TF-IDF and Sentence-BERT
         - 9.2: Generate report showing similarity scores
-        - 9.3: Verify all embeddings have exactly 384 dimensions
+        - 9.3: Verify all embeddings have exactly 768 dimensions
         - 9.4: Verify all embedding values are finite
         - 9.5: Verify encoding idempotence
         - 6.1-6.3: Test semantic understanding
@@ -359,7 +359,7 @@ def validate_embeddings(
         )
         
         # Load embeddings from file-based storage
-        vector_db = FileVectorDatabase(storage_path=storage_path, vector_size=384)
+        vector_db = FileVectorDatabase(storage_path=storage_path, vector_size=768)
         
         if vector_db.count() > 0:
             # Load corpus into engine
@@ -486,7 +486,7 @@ def validate_embeddings(
         logger.error(f"❌ Dimension check FAILED: {dimension_results['incorrect_dimension']} embeddings with wrong dimensions")
         all_checks_passed = False
     else:
-        logger.info(f"✓ Dimension check PASSED: All {dimension_results['correct_dimension']} embeddings have 384 dimensions")
+        logger.info(f"✓ Dimension check PASSED: All {dimension_results['correct_dimension']} embeddings have 768 dimensions")
     
     if finite_results["has_non_finite"] > 0:
         logger.error(f"❌ Finite value check FAILED: {finite_results['has_non_finite']} embeddings with non-finite values")

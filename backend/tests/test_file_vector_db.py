@@ -25,27 +25,27 @@ def test_file_vector_db_initialization(temp_storage):
     """Test that FileVectorDatabase initializes correctly."""
     db = FileVectorDatabase(
         storage_path=temp_storage,
-        vector_size=384
+        vector_size=768
     )
     
     assert db.storage_path == Path(temp_storage)
-    assert db.vector_size == 384
+    assert db.vector_size == 768
     assert len(db.ids) == 0
     assert len(db.vectors) == 0
     
     db.close()
 
 
-def test_insert_and_search_384_dim(temp_storage):
-    """Test inserting and searching 384-dimensional vectors (Sentence-BERT)."""
+def test_insert_and_search_768_dim(temp_storage):
+    """Test inserting and searching 768-dimensional vectors (Sentence-BERT)."""
     db = FileVectorDatabase(
         storage_path=temp_storage,
-        vector_size=384
+        vector_size=768
     )
     
     # Insert a vector
     media_id = "test-media-1"
-    vector = np.random.rand(384).tolist()
+    vector = np.random.rand(768).tolist()
     metadata = {"model_version": "all-MiniLM-L6-v2", "vectorizer_type": "sbert"}
     
     db.insert(media_id=media_id, vector=vector, metadata=metadata)
@@ -88,10 +88,10 @@ def test_vector_size_mismatch_insert(temp_storage):
     """Test that inserting a vector with wrong size raises ValueError."""
     db = FileVectorDatabase(
         storage_path=temp_storage,
-        vector_size=384
+        vector_size=768
     )
     
-    # Try to insert a 5000-dim vector into a 384-dim database
+    # Try to insert a 5000-dim vector into a 768-dim database
     media_id = "test-media-3"
     vector = np.random.rand(5000).tolist()
     
@@ -105,12 +105,12 @@ def test_vector_size_mismatch_search(temp_storage):
     """Test that searching with wrong vector size raises ValueError."""
     db = FileVectorDatabase(
         storage_path=temp_storage,
-        vector_size=384
+        vector_size=768
     )
     
     # Insert a 384-dim vector
     media_id = "test-media-4"
-    vector = np.random.rand(384).tolist()
+    vector = np.random.rand(768).tolist()
     db.insert(media_id=media_id, vector=vector)
     
     # Try to search with a 5000-dim vector
@@ -141,7 +141,7 @@ def test_backward_compatibility_with_existing_data(temp_storage):
     # It should detect the existing 5000-dim vectors and adapt
     db2 = FileVectorDatabase(
         storage_path=temp_storage,
-        vector_size=384  # This should be overridden by existing data
+        vector_size=768  # This should be overridden by existing data
     )
     
     # The database should have adapted to the existing vector size
@@ -163,12 +163,12 @@ def test_upsert_vector(temp_storage):
     """Test that inserting with same ID updates the vector."""
     db = FileVectorDatabase(
         storage_path=temp_storage,
-        vector_size=384
+        vector_size=768
     )
     
     media_id = "test-media-5"
-    vector1 = np.random.rand(384).tolist()
-    vector2 = np.random.rand(384).tolist()
+    vector1 = np.random.rand(768).tolist()
+    vector2 = np.random.rand(768).tolist()
     
     # Insert first vector
     db.insert(media_id=media_id, vector=vector1, metadata={"version": "v1"})
@@ -191,15 +191,15 @@ def test_search_returns_sorted_results(temp_storage):
     """Test that search results are sorted by score descending."""
     db = FileVectorDatabase(
         storage_path=temp_storage,
-        vector_size=384
+        vector_size=768
     )
     
     # Insert multiple vectors
-    base_vector = np.random.rand(384)
+    base_vector = np.random.rand(768)
     
     for i in range(5):
         # Create similar vectors by adding varying amounts of noise
-        vector = (base_vector + np.random.rand(384) * (i * 0.1)).tolist()
+        vector = (base_vector + np.random.rand(768) * (i * 0.1)).tolist()
         db.insert(media_id=f"media-{i}", vector=vector)
     
     # Search
@@ -219,12 +219,12 @@ def test_delete_vector(temp_storage):
     """Test deleting a vector from the database."""
     db = FileVectorDatabase(
         storage_path=temp_storage,
-        vector_size=384
+        vector_size=768
     )
     
     # Insert vectors
     for i in range(3):
-        vector = np.random.rand(384).tolist()
+        vector = np.random.rand(768).tolist()
         db.insert(media_id=f"media-{i}", vector=vector)
     
     assert db.count() == 3

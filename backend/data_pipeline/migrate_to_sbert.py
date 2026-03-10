@@ -446,7 +446,6 @@ def migrate_to_sbert(
         logger.info("=" * 60)
         
         logger.info(f"Model: {model_name}")
-        logger.info(f"Expected embedding dimension: 384")
         
         ml_engine = MLEngine(
             vectorizer_path=vectorizer_path,
@@ -454,6 +453,10 @@ def migrate_to_sbert(
             vectorizer_type="sbert",
             model_name=model_name
         )
+        
+        # Get the actual embedding dimension from the model
+        expected_dim = ml_engine.sbert_vectorizer.get_embedding_dimension()
+        logger.info(f"Expected embedding dimension: {expected_dim}")
         
         logger.info("Sentence-BERT vectorizer initialized successfully")
         
@@ -535,9 +538,9 @@ def migrate_to_sbert(
                         f"Embedding count mismatch: expected {len(batch_descriptions)}, got {batch_embeddings.shape[0]}"
                     )
                 
-                if batch_embeddings.shape[1] != 384:
+                if batch_embeddings.shape[1] != 768:
                     raise ValueError(
-                        f"Expected 384-dimensional embeddings, got {batch_embeddings.shape[1]}"
+                        f"Expected 768-dimensional embeddings, got {batch_embeddings.shape[1]}"
                     )
                 
                 # Validate each embedding individually
@@ -548,8 +551,8 @@ def migrate_to_sbert(
                             raise ValueError("Embedding contains non-finite values (NaN or infinity)")
                         
                         # Check dimensionality
-                        if embedding.shape[0] != 384:
-                            raise ValueError(f"Expected 384 dimensions, got {embedding.shape[0]}")
+                        if embedding.shape[0] != expected_dim:
+                            raise ValueError(f"Expected {expected_dim} dimensions, got {embedding.shape[0]}")
                         
                         successful_embeddings.append(embedding)
                         successful_ids.append(media_id)
@@ -582,8 +585,8 @@ def migrate_to_sbert(
                         )
                         
                         # Validate individual embedding
-                        if individual_embedding.shape != (1, 384):
-                            raise ValueError(f"Expected shape (1, 384), got {individual_embedding.shape}")
+                        if individual_embedding.shape != (1, expected_dim):
+                            raise ValueError(f"Expected shape (1, {expected_dim}), got {individual_embedding.shape}")
                         
                         if not np.all(np.isfinite(individual_embedding)):
                             raise ValueError("Embedding contains non-finite values")
@@ -622,10 +625,10 @@ def migrate_to_sbert(
             logger.info("STEP 5: Storing embeddings in FileVectorDatabase")
             logger.info("=" * 60)
             
-            # Initialize FileVectorDatabase with 384-dimensional vectors
+            # Initialize FileVectorDatabase with 768-dimensional vectors
             vector_db = FileVectorDatabase(
                 storage_path=embeddings_path,
-                vector_size=384
+                vector_size=768
             )
             
             # Clear existing embeddings

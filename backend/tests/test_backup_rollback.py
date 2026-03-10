@@ -188,7 +188,7 @@ def test_verify_backup_validates_required_files(tmp_path):
     assert result is False
     
     # Test with only vectors.npy
-    np.save(backup_path / "vectors.npy", np.random.randn(10, 384))
+    np.save(backup_path / "vectors.npy", np.random.randn(10, 768))
     result = verify_backup(str(backup_path))
     assert result is False
     
@@ -272,7 +272,7 @@ def test_verify_backup_validates_json_format(tmp_path):
     backup_path.mkdir()
     
     # Create valid vectors
-    np.save(backup_path / "vectors.npy", np.random.randn(2, 384))
+    np.save(backup_path / "vectors.npy", np.random.randn(2, 768))
     
     # Test with invalid JSON
     with open(backup_path / "ids.json", 'w') as f:
@@ -302,7 +302,7 @@ def test_verify_backup_validates_count_match(tmp_path):
     backup_path.mkdir()
     
     # Create 5 vectors but only 3 IDs
-    np.save(backup_path / "vectors.npy", np.random.randn(5, 384))
+    np.save(backup_path / "vectors.npy", np.random.randn(5, 768))
     with open(backup_path / "ids.json", 'w') as f:
         json.dump(["id1", "id2", "id3"], f)
     
@@ -325,7 +325,7 @@ def test_verify_backup_passes_with_valid_backup(tmp_path):
     
     # Create valid backup
     num_items = 10
-    vectors = np.random.randn(num_items, 384).astype(np.float32)
+    vectors = np.random.randn(num_items, 768).astype(np.float32)
     np.save(backup_path / "vectors.npy", vectors)
     
     ids = [f"media_{i}" for i in range(num_items)]
@@ -361,7 +361,7 @@ def test_rollback_migration_restores_files(tmp_path):
     
     # Create different data in embeddings directory (simulating migration)
     embeddings_path.mkdir()
-    new_vectors = np.random.randn(10, 384).astype(np.float32)
+    new_vectors = np.random.randn(10, 768).astype(np.float32)
     np.save(embeddings_path / "vectors.npy", new_vectors)
     
     new_ids = [f"new_media_{i}" for i in range(10)]
@@ -401,7 +401,7 @@ def test_rollback_migration_verifies_backup_before_restore(tmp_path):
     
     # Create embeddings directory with data
     embeddings_path.mkdir()
-    original_vectors = np.random.randn(10, 384).astype(np.float32)
+    original_vectors = np.random.randn(10, 768).astype(np.float32)
     np.save(embeddings_path / "vectors.npy", original_vectors)
     
     # Attempt rollback with invalid backup
@@ -439,7 +439,7 @@ def test_rollback_migration_creates_backup_of_current_state(tmp_path):
     
     # Create current embeddings
     embeddings_path.mkdir()
-    current_vectors = np.random.randn(10, 384).astype(np.float32)
+    current_vectors = np.random.randn(10, 768).astype(np.float32)
     np.save(embeddings_path / "vectors.npy", current_vectors)
     
     current_ids = [f"current_media_{i}" for i in range(10)]

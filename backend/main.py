@@ -4,6 +4,7 @@ FastAPI Backend for Semantic Media Engine
 import os
 import time
 import logging
+from contextlib import asynccontextmanager
 from typing import List, Dict, Any
 from fastapi import FastAPI, HTTPException, status, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -31,10 +32,82 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Module-level refs for lifespan and route handlers
+ml_engine: "MLEngine" = None
+postgres_db: "PostgresDatabase" = None
+vector_db = None  # VectorDatabase | FileVectorDatabase
+hybrid_search: "HybridSearchEngine" = None
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    Initialize DB and ML on startup, clean up on shutdown.
+    Uses lifespan for Vercel compatibility (startup/shutdown limited on serverless).
+    """
+    global ml_engine, postgres_db, vector_db, hybrid_search
+    try:
+        vectorizer_type = os.getenv("VECTORIZER_TYPE", "sbert")
+        sbert_model_name = os.getenv("SBERT_MODEL_NAME", "all-MiniLM-L6-v2")
+        vectorizer_path = os.getenv("VECTORIZER_PATH", "backend/models")
+        embeddings_path = os.getenv("EMBEDDINGS_PATH", "backend/embeddings")
+        default_vector_size = 768 if vectorizer_type == "sbert" else 5000
+        vector_size = int(os.getenv("VECTOR_SIZE", str(default_vector_size)))
+
+        ml_engine = MLEngine(
+            vectorizer_path=vectorizer_path,
+            embeddings_path=embeddings_path,
+            vectorizer_type=vectorizer_type,
+            model_name=sbert_model_name if vectorizer_type == "sbert" else None,
+        )
+        logger.info(f"ML Engine initialized with vectorizer_type={vectorizer_type}")
+        if vectorizer_type == "sbert":
+            logger.info(f"Sentence-BERT model: {sbert_model_name}")
+
+        postgres_db = PostgresDatabase()
+        logger.info("PostgreSQL connection initialized")
+
+        use_file_storage = os.getenv("USE_FILE_STORAGE", "true").lower() == "true"
+        if use_file_storage:
+            vector_db = FileVectorDatabase(storage_path=embeddings_path, vector_size=vector_size)
+            logger.info(f"File-based Vector Database initialized (vector_size={vector_size})")
+        else:
+            vector_db_host = os.getenv("QDRANT_HOST", "localhost")
+            vector_db_port = int(os.getenv("QDRANT_PORT", "6333"))
+            vector_db = VectorDatabase(
+                host=vector_db_host, port=vector_db_port, vector_size=vector_size
+            )
+            logger.info(f"Qdrant Vector Database initialized (vector_size={vector_size})")
+
+        use_hybrid = os.getenv("USE_HYBRID_SEARCH", "true").lower() == "true"
+        if use_hybrid:
+            logger.info("Initializing Hybrid Search Engine...")
+            hybrid_search = HybridSearchEngine(title_weight=0.5, semantic_weight=0.5)
+            logger.info("Loading corpus for hybrid search...")
+            all_media = postgres_db.get_all_media()
+            hybrid_search.index_corpus(all_media)
+            logger.info(f"Hybrid Search Engine initialized with {len(all_media)} items")
+        else:
+            hybrid_search = None
+
+        yield
+    finally:
+        try:
+            if postgres_db:
+                postgres_db.close()
+                logger.info("PostgreSQL connection closed")
+            if vector_db:
+                vector_db.close()
+                logger.info("Vector Database connection closed")
+        except Exception as e:
+            logger.error(f"Error during shutdown: {e}")
+
+
 app = FastAPI(
     title="Semantic Media Engine API",
     description="Content-based recommendation system for books and TV shows",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan,
 )
 
 # Custom exception handlers for consistent error responses
@@ -102,108 +175,6 @@ app.add_middleware(
 )
 
 logger.info(f"CORS enabled for origins: {cors_origins}")
-
-# Initialize components
-ml_engine: MLEngine = None
-postgres_db: PostgresDatabase = None
-vector_db = None  # Can be VectorDatabase or FileVectorDatabase
-hybrid_search: HybridSearchEngine = None
-
-
-@app.on_event("startup")
-async def startup_event():
-    """
-    Initialize database connections and ML engine on startup.
-    
-    Requirements:
-        - 2.1: Support both TF-IDF and Sentence-BERT vectorizers
-        - 5.1: Maintain backward compatibility with existing TF-IDF code
-        - 5.5: Ensure API functionality unchanged
-        - 7.1: Initialize MLEngine with vectorizer_type from environment
-    """
-    global ml_engine, postgres_db, vector_db, hybrid_search
-    
-    try:
-        # Get vectorizer configuration from environment
-        vectorizer_type = os.getenv("VECTORIZER_TYPE", "sbert")  # Default to sbert
-        sbert_model_name = os.getenv("SBERT_MODEL_NAME", "all-MiniLM-L6-v2")
-        vectorizer_path = os.getenv("VECTORIZER_PATH", "backend/models")
-        embeddings_path = os.getenv("EMBEDDINGS_PATH", "backend/embeddings")
-        
-        # Determine vector size based on vectorizer type
-        if vectorizer_type == "sbert":
-            default_vector_size = 768
-        else:
-            default_vector_size = 5000
-        
-        vector_size = int(os.getenv("VECTOR_SIZE", str(default_vector_size)))
-        
-        # Initialize ML Engine with vectorizer type
-        ml_engine = MLEngine(
-            vectorizer_path=vectorizer_path,
-            embeddings_path=embeddings_path,
-            vectorizer_type=vectorizer_type,
-            model_name=sbert_model_name if vectorizer_type == "sbert" else None
-        )
-        logger.info(f"ML Engine initialized with vectorizer_type={vectorizer_type}")
-        if vectorizer_type == "sbert":
-            logger.info(f"Sentence-BERT model: {sbert_model_name}")
-        
-        # Initialize PostgreSQL
-        postgres_db = PostgresDatabase()
-        logger.info("PostgreSQL connection initialized")
-        
-        # Initialize Vector DB (file-based or Qdrant)
-        use_file_storage = os.getenv("USE_FILE_STORAGE", "true").lower() == "true"
-        
-        if use_file_storage:
-            vector_db = FileVectorDatabase(
-                storage_path=embeddings_path,
-                vector_size=vector_size
-            )
-            logger.info(f"File-based Vector Database initialized (vector_size={vector_size})")
-        else:
-            vector_db_host = os.getenv("QDRANT_HOST", "localhost")
-            vector_db_port = int(os.getenv("QDRANT_PORT", "6333"))
-            vector_db = VectorDatabase(
-                host=vector_db_host,
-                port=vector_db_port,
-                vector_size=vector_size
-            )
-            logger.info(f"Qdrant Vector Database initialized (vector_size={vector_size})")
-        
-        # Initialize Hybrid Search Engine
-        use_hybrid = os.getenv("USE_HYBRID_SEARCH", "true").lower() == "true"
-        if use_hybrid:
-            logger.info("Initializing Hybrid Search Engine...")
-            hybrid_search = HybridSearchEngine(title_weight=0.5, semantic_weight=0.5)
-            
-            # Index all media titles
-            logger.info("Loading corpus for hybrid search...")
-            all_media = postgres_db.get_all_media()
-            hybrid_search.index_corpus(all_media)
-            logger.info(f"Hybrid Search Engine initialized with {len(all_media)} items")
-        
-    except Exception as e:
-        logger.error(f"Error during startup: {e}")
-        raise
-
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    """Clean up database connections on shutdown."""
-    global postgres_db, vector_db
-    
-    try:
-        if postgres_db:
-            postgres_db.close()
-            logger.info("PostgreSQL connection closed")
-        
-        if vector_db:
-            vector_db.close()
-            logger.info("Vector Database connection closed")
-    except Exception as e:
-        logger.error(f"Error during shutdown: {e}")
 
 
 @app.get("/")

@@ -1,0 +1,9 @@
+[project]
+name = "semantic-media-engine-backend"
+version = "1.0.0"
+description = "FastAPI backend for VibeCheck semantic media recommendations"
+requires-python = ">=3.9,<3.13"
+
+# Tell Vercel where to find the FastAPI app (main.py defines "app")
+[project.scripts]
+app = "main:app"

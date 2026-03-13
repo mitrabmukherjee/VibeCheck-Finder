@@ -1,0 +1,10 @@
+# Reduce serverless bundle size
+tests/
+.hypothesis/
+*.pyc
+__pycache__/
+.pytest_cache/
+migration_report*.json
+data_pipeline/
+data/
+*.md

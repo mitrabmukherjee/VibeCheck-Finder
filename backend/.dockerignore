@@ -11,7 +11,7 @@ data_pipeline/
 data/
 
 # Large assets: load at runtime or mount as volume (keeps image under 4GB)
-embeddings/
+# embeddings/
 # Add models/ here too if your repo has large cached SBERT files
 
 # Python cache and local env

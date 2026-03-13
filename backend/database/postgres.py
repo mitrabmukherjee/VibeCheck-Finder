@@ -37,15 +37,14 @@ class PostgresDatabase:
         """
         database_url = os.getenv("DATABASE_URL")
         if database_url:
-            # postgresql://user:password@host:port/dbname (Render/Heroku style)
-            parsed = urlparse(database_url)
-            self.connection_params = {
-                "host": parsed.hostname or "localhost",
-                "port": parsed.port or 5432,
-                "database": (parsed.path or "/semantic_media").lstrip("/") or "semantic_media",
-                "user": parsed.username or "postgres",
-                "password": parsed.password or ""
-            }
+            # Use full connection string with SSL required (e.g., Render internal URL)
+            self.pool = psycopg2.pool.ThreadedConnectionPool(
+                min_connections,
+                max_connections,
+                database_url,
+                sslmode="require"
+            )
+            self.connection_params = {"dsn": database_url, "sslmode": "require"}
         else:
             self.connection_params = {
                 "host": os.getenv("POSTGRES_HOST", "localhost"),
@@ -54,13 +53,12 @@ class PostgresDatabase:
                 "user": os.getenv("POSTGRES_USER", "postgres"),
                 "password": os.getenv("POSTGRES_PASSWORD", "")
             }
-
-        # Initialize connection pool
-        self.pool = psycopg2.pool.ThreadedConnectionPool(
-            min_connections,
-            max_connections,
-            **self.connection_params
-        )
+            # Initialize connection pool with discrete params
+            self.pool = psycopg2.pool.ThreadedConnectionPool(
+                min_connections,
+                max_connections,
+                **self.connection_params
+            )
     
     def _get_connection(self):
         """Get a connection from the pool."""

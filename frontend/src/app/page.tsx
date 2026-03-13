@@ -41,7 +41,7 @@ export default function Home() {
           top_k: 50, // Fetch more results for pagination
         })
         setAllResults(response.results as MediaRecommendation[])
-        setResults((response.results as MediaRecommendation[]).slice(0, displayCount))
+        setResults((response.results as MediaRecommendation[]).slice(0, 12))
         setError(null)
       } catch (err) {
         if (err instanceof Error) {
@@ -141,7 +141,7 @@ export default function Home() {
               <div className="text-red-600">cinematic obsession.</div>
             </h2>
             <p className={`text-lg sm:text-xl max-w-2xl mx-auto mb-12 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-              Experience the future of streaming. Our AI understands context, emotion, and nuance to find exactly what you're in the mood for.
+              Experience the future of streaming. Our AI understands context, emotion, and nuance to find exactly what you&apos;re in the mood for.
             </p>
           </div>
         )}

@@ -10,8 +10,8 @@ Use this guide to run the FastAPI backend on [Railway](https://railway.app). Pai
 2. **New Project** → **Deploy from GitHub repo**.
 3. Select your **VibeCheck-finder** repository.
 4. In the new service, open **Settings**:
-   - Set **Root Directory** to **`backend`** (so Railway builds and runs from the `backend/` folder).
-   - Leave **Build** and **Deploy** as auto-detected (Railway uses `railway.json` in `backend/` for the start command).
+   - Set **Root Directory** to **`backend`** (required—building from repo root would include the frontend and exceed the 4 GB image limit).
+   - Railway will detect the **Dockerfile** in `backend/` and use it (slim image + CPU-only PyTorch to stay under 4 GB). If no Dockerfile were present, it would use `railway.json` for the start command.
 5. In the same project, add a database: **New** → **Database** → **PostgreSQL**.
 6. In the **PostgreSQL** service, open **Variables** or **Connect** and note the credentials (host, port, database, user, password).
 
@@ -77,6 +77,18 @@ In your **Vercel** project (frontend):
 
 ---
 
+## Image size (4 GB limit)
+
+Railway limits images to **4 GB**. This repo is set up to stay under that:
+
+- **Root Directory** must be **`backend`**. If you use the repo root, the build includes the frontend and can reach ~9 GB and fail.
+- **`backend/Dockerfile`** uses `python:3.12-slim` and installs **CPU-only PyTorch** first, then the rest of the dependencies, which keeps the image smaller.
+- **`backend/.dockerignore`** excludes tests, `data_pipeline/`, `data/`, and `embeddings/` so they are not sent in the build context.
+
+If your image still exceeds 4 GB (e.g. large files in `models/`), add `models/` to `backend/.dockerignore`, or consider upgrading your Railway plan for a higher limit.
+
+---
+
 ## Summary
 
 | Step | Action |
@@ -87,4 +99,4 @@ In your **Vercel** project (frontend):
 | 4 | **Generate Domain** for the backend service |
 | 5 | Set **NEXT_PUBLIC_API_URL** in Vercel to the Railway backend URL and redeploy |
 
-The backend uses **`backend/railway.json`** for the start command: `uvicorn main:app --host 0.0.0.0 --port $PORT`. No extra config is required unless you change the run command.
+When using the **Dockerfile**, the start command is inside the image. Otherwise **`backend/railway.json`** defines: `uvicorn main:app --host 0.0.0.0 --port $PORT`.

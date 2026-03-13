@@ -1,0 +1,38 @@
+# Tests and dev tooling (not needed at runtime)
+tests/
+.hypothesis/
+.pytest_cache/
+pytest.ini
+test_*.py
+**/test_*.py
+
+# Data pipeline scripts (run locally; not needed in API container)
+data_pipeline/
+data/
+
+# Large assets: load at runtime or mount as volume (keeps image under 4GB)
+embeddings/
+# Add models/ here too if your repo has large cached SBERT files
+
+# Python cache and local env
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+
+# Git and IDE
+.git/
+.gitignore
+.vscode/
+.idea/
+
+# Docs and reports (not needed in image)
+*.md
+migration_report*.json
+
+# Env files (secrets set in Railway; don't bake in image)
+.env
+.env.*
+!.env.example

@@ -1,8 +1,11 @@
 # Deploy to Vercel
 
-**Recommended:** Deploy the **frontend** (Next.js) on Vercel and the **backend** (FastAPI) on **Railway**. Full backend steps: **[DEPLOY_RAILWAY_BACKEND.md](DEPLOY_RAILWAY_BACKEND.md)**.
+**Recommended:** Deploy the **frontend** (Next.js) on Vercel and the **backend** (FastAPI) on **Render** or **Railway**.
 
-You can also run the backend on Vercel as a serverless function (see [§2b](#2b-deploy-backend-on-vercel-optional)); Railway is simpler and has no cold starts or bundle limits.
+- **Easier:** **[DEPLOY_RENDER_BACKEND.md](DEPLOY_RENDER_BACKEND.md)** — Connect repo → Blueprint → one-click Postgres + backend. No Docker or image limits.
+- **Alternative:** [DEPLOY_RAILWAY_BACKEND.md](DEPLOY_RAILWAY_BACKEND.md) (Railway; more config, 4 GB image limit).
+
+You can also run the backend on Vercel as a serverless function (see [§2b](#2b-deploy-backend-on-vercel-optional)).
 
 ---
 
@@ -45,11 +48,11 @@ vercel --prod
 
 ---
 
-## 2a. Deploy backend on Railway (recommended)
+## 2a. Deploy backend (recommended: Render)
 
-Deploy the FastAPI backend on Railway so it runs as a normal server (no cold starts, no 500 MB limit). Railway can host PostgreSQL in the same project.
+**Easiest:** **→ [DEPLOY_RENDER_BACKEND.md](DEPLOY_RENDER_BACKEND.md)** — Use Render’s Blueprint: connect repo, get Postgres + backend in one go. Then set `NEXT_PUBLIC_API_URL` in Vercel to your Render backend URL.
 
-**→ Follow [DEPLOY_RAILWAY_BACKEND.md](DEPLOY_RAILWAY_BACKEND.md)** for step-by-step instructions (root directory `backend`, env vars, PostgreSQL, public URL). Then set `NEXT_PUBLIC_API_URL` in Vercel to your Railway backend URL and redeploy the frontend.
+**Alternative (Railway):** [DEPLOY_RAILWAY_BACKEND.md](DEPLOY_RAILWAY_BACKEND.md) — More setup (Root Directory, env vars, Docker/image size). Then set `NEXT_PUBLIC_API_URL` to your Railway backend URL.
 
 ---
 
@@ -131,7 +134,8 @@ Otherwise the browser will block API requests.
 | Part     | Where to deploy | Notes                                                                 |
 |----------|------------------|-----------------------------------------------------------------------|
 | Frontend | **Vercel**       | Root Directory = `frontend`; set `NEXT_PUBLIC_API_URL` to backend URL |
-| Backend  | **Railway**      | Root Directory = `backend`; add PostgreSQL; see **DEPLOY_RAILWAY_BACKEND.md** |
-| Backend  | Vercel (optional) | Root Directory = `backend`; serverless, 500 MB limit; see section 2b above |
+| Backend  | **Render**       | Easiest: **DEPLOY_RENDER_BACKEND.md** (Blueprint one-click)            |
+| Backend  | Railway          | **DEPLOY_RAILWAY_BACKEND.md** (Docker, 4 GB limit)                   |
+| Backend  | Vercel (optional) | Section 2b; serverless, 500 MB limit                               |
 
 More options (Render, Fly.io): **VERCEL_DEPLOYMENT_GUIDE.md**.

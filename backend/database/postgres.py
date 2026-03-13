@@ -10,6 +10,7 @@ import uuid
 import time
 from typing import List, Dict, Any, Optional, Callable, TypeVar
 from datetime import datetime
+from urllib.parse import urlparse
 import psycopg2
 from psycopg2 import pool
 from psycopg2.extras import RealDictCursor, execute_batch
@@ -28,18 +29,32 @@ class PostgresDatabase:
         """
         Initialize database connection pool.
         
+        Uses DATABASE_URL if set (e.g. Render, Heroku), otherwise POSTGRES_HOST, etc.
+        
         Args:
             min_connections: Minimum number of connections in the pool
             max_connections: Maximum number of connections in the pool
         """
-        self.connection_params = {
-            "host": os.getenv("POSTGRES_HOST", "localhost"),
-            "port": os.getenv("POSTGRES_PORT", "5432"),
-            "database": os.getenv("POSTGRES_DB", "semantic_media"),
-            "user": os.getenv("POSTGRES_USER", "postgres"),
-            "password": os.getenv("POSTGRES_PASSWORD", "")
-        }
-        
+        database_url = os.getenv("DATABASE_URL")
+        if database_url:
+            # postgresql://user:password@host:port/dbname (Render/Heroku style)
+            parsed = urlparse(database_url)
+            self.connection_params = {
+                "host": parsed.hostname or "localhost",
+                "port": parsed.port or 5432,
+                "database": (parsed.path or "/semantic_media").lstrip("/") or "semantic_media",
+                "user": parsed.username or "postgres",
+                "password": parsed.password or ""
+            }
+        else:
+            self.connection_params = {
+                "host": os.getenv("POSTGRES_HOST", "localhost"),
+                "port": os.getenv("POSTGRES_PORT", "5432"),
+                "database": os.getenv("POSTGRES_DB", "semantic_media"),
+                "user": os.getenv("POSTGRES_USER", "postgres"),
+                "password": os.getenv("POSTGRES_PASSWORD", "")
+            }
+
         # Initialize connection pool
         self.pool = psycopg2.pool.ThreadedConnectionPool(
             min_connections,

@@ -116,6 +116,30 @@ class FileVectorDatabase:
         with open(self.ids_file, 'w') as f:
             json.dump(self.ids, f)
     
+    def batch_insert(self, items: list) -> None:
+        """
+        Insert or update multiple vectors efficiently in a single disk write.
+
+        Args:
+            items: List of (media_id, vector, metadata) tuples.
+        """
+        for media_id, vector, metadata in items:
+            if len(vector) != self.vector_size:
+                raise ValueError(
+                    f"Vector size mismatch for {media_id}: "
+                    f"expected {self.vector_size}, got {len(vector)}"
+                )
+            vector_array = np.array(vector, dtype=np.float32).reshape(1, -1)
+            if media_id in self.ids:
+                idx = self.ids.index(media_id)
+                self.vectors[idx] = vector_array[0]
+                self.metadata[idx] = metadata or {}
+            else:
+                self.vectors = np.vstack([self.vectors, vector_array])
+                self.ids.append(media_id)
+                self.metadata.append(metadata or {})
+        self._save_data()
+
     def insert(
         self,
         media_id: str,

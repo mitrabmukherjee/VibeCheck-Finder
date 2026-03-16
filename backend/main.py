@@ -24,6 +24,7 @@ from ml_engine.hybrid_search import HybridSearchEngine
 from database.postgres import PostgresDatabase
 from database.vector_db import VectorDatabase
 from database.file_vector_db import FileVectorDatabase
+from database.postgres_vector_db import PostgresVectorDatabase
 
 # Load environment variables
 load_dotenv()
@@ -68,8 +69,13 @@ async def lifespan(app: FastAPI):
         postgres_db.initialize_schema()
         logger.info("PostgreSQL connection initialized")
 
+        use_postgres_vectors = os.getenv("USE_POSTGRES_VECTORS", "false").lower() == "true"
         use_file_storage = os.getenv("USE_FILE_STORAGE", "true").lower() == "true"
-        if use_file_storage:
+
+        if use_postgres_vectors:
+            vector_db = PostgresVectorDatabase(postgres_db=postgres_db, vector_size=vector_size)
+            logger.info(f"Postgres Vector Database initialized (vector_size={vector_size})")
+        elif use_file_storage:
             vector_db = FileVectorDatabase(storage_path=embeddings_path, vector_size=vector_size)
             logger.info(f"File-based Vector Database initialized (vector_size={vector_size})")
         else:
@@ -79,6 +85,26 @@ async def lifespan(app: FastAPI):
                 host=vector_db_host, port=vector_db_port, vector_size=vector_size
             )
             logger.info(f"Qdrant Vector Database initialized (vector_size={vector_size})")
+
+        if vector_db.count() == 0:
+            logger.info("No embeddings found. Auto-generating from database (this may take a few minutes)...")
+            all_media = postgres_db.get_all_media()
+            if all_media:
+                descriptions = [f"{m['title']}. {m['description']}" for m in all_media]
+                media_ids = [str(m["id"]) for m in all_media]
+                embeddings = ml_engine.compute_embeddings(descriptions, media_ids, batch_size=64)
+                items = [
+                    (media_ids[i], embeddings[i].tolist(), {})
+                    for i in range(len(media_ids))
+                ]
+                if hasattr(vector_db, "batch_insert"):
+                    vector_db.batch_insert(items)
+                else:
+                    for item_id, vec, meta in items:
+                        vector_db.insert(item_id, vec, meta)
+                logger.info(f"Auto-generated {len(all_media)} embeddings successfully")
+            else:
+                logger.warning("No media items in database — skipping embedding generation")
 
         use_hybrid = os.getenv("USE_HYBRID_SEARCH", "true").lower() == "true"
         if use_hybrid:

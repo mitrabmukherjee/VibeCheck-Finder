@@ -109,6 +109,18 @@ class PostgresDatabase:
                     WHEN duplicate_object THEN NULL;
                 END $$;
             """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS vector_embeddings (
+                    id UUID PRIMARY KEY,
+                    vector FLOAT4[] NOT NULL,
+                    metadata JSONB DEFAULT '{}',
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+                );
+            """)
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_vector_embeddings_id "
+                "ON vector_embeddings(id);"
+            )
             conn.commit()
         except Exception:
             conn.rollback()

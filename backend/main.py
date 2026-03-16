@@ -65,6 +65,7 @@ async def lifespan(app: FastAPI):
             logger.info(f"Sentence-BERT model: {sbert_model_name}")
 
         postgres_db = PostgresDatabase()
+        postgres_db.initialize_schema()
         logger.info("PostgreSQL connection initialized")
 
         use_file_storage = os.getenv("USE_FILE_STORAGE", "true").lower() == "true"

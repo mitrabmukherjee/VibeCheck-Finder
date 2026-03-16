@@ -37,14 +37,17 @@ class PostgresDatabase:
         """
         database_url = os.getenv("DATABASE_URL")
         if database_url:
-            # Use full connection string with SSL required (e.g., Render internal URL)
+            # Use SSL only for remote connections (Railway, Render, etc.)
+            # Detect local connections by checking for localhost/127.0.0.1
+            is_local = any(h in database_url for h in ["localhost", "127.0.0.1"])
+            ssl_params = {} if is_local else {"sslmode": "require"}
             self.pool = psycopg2.pool.ThreadedConnectionPool(
                 min_connections,
                 max_connections,
                 database_url,
-                sslmode="require"
+                **ssl_params
             )
-            self.connection_params = {"dsn": database_url, "sslmode": "require"}
+            self.connection_params = {"dsn": database_url, **ssl_params}
         else:
             self.connection_params = {
                 "host": os.getenv("POSTGRES_HOST", "localhost"),
@@ -60,6 +63,60 @@ class PostgresDatabase:
                 **self.connection_params
             )
     
+    def initialize_schema(self) -> None:
+        """Create tables, types, indexes and triggers if they don't already exist."""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("""
+                DO $$ BEGIN
+                    CREATE TYPE media_type_enum AS ENUM ('book', 'tv_show');
+                EXCEPTION
+                    WHEN duplicate_object THEN NULL;
+                END $$;
+            """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS media_items (
+                    id UUID PRIMARY KEY,
+                    title VARCHAR(500) NOT NULL,
+                    description TEXT NOT NULL,
+                    media_type media_type_enum NOT NULL,
+                    metadata JSONB,
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+                );
+            """)
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_media_items_id ON media_items(id);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_media_items_media_type ON media_items(media_type);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_media_items_metadata ON media_items USING GIN(metadata);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_media_items_created_at ON media_items(created_at);")
+            cursor.execute("""
+                CREATE OR REPLACE FUNCTION update_updated_at_column()
+                RETURNS TRIGGER AS $$
+                BEGIN
+                    NEW.updated_at = CURRENT_TIMESTAMP;
+                    RETURN NEW;
+                END;
+                $$ LANGUAGE plpgsql;
+            """)
+            cursor.execute("""
+                DO $$ BEGIN
+                    CREATE TRIGGER update_media_items_updated_at
+                        BEFORE UPDATE ON media_items
+                        FOR EACH ROW
+                        EXECUTE FUNCTION update_updated_at_column();
+                EXCEPTION
+                    WHEN duplicate_object THEN NULL;
+                END $$;
+            """)
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            cursor.close()
+            self._put_connection(conn)
+
     def _get_connection(self):
         """Get a connection from the pool."""
         return self.pool.getconn()

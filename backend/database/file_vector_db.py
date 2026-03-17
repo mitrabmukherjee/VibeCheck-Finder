@@ -77,20 +77,27 @@ class FileVectorDatabase:
     def _load_data(self) -> None:
         """Load existing embeddings and metadata from disk."""
         if self.vectors_file.exists():
-            self.vectors = np.load(str(self.vectors_file))
-            
-            # Validate that existing vectors match configured vector_size
-            if len(self.vectors) > 0:
-                existing_vector_size = self.vectors.shape[1]
-                if existing_vector_size != self.vector_size:
-                    logger.warning(
-                        f"Vector size mismatch detected! "
-                        f"Configured: {self.vector_size}, "
-                        f"Existing data: {existing_vector_size}. "
-                        f"Using existing vector size for backward compatibility."
-                    )
-                    # Update vector_size to match existing data for backward compatibility
-                    self.vector_size = existing_vector_size
+            loaded = np.load(str(self.vectors_file))
+
+            # Always check the stored dimension (even for empty arrays) against
+            # the configured vector_size.  A mismatch means the file was written
+            # by a different model, so we discard it and start fresh.
+            if loaded.ndim == 2 and loaded.shape[1] != self.vector_size:
+                logger.warning(
+                    f"Vector dimension mismatch: file has {loaded.shape[1]}-dim vectors "
+                    f"but current model produces {self.vector_size}-dim vectors. "
+                    f"Discarding stale embeddings — they will be regenerated."
+                )
+                self.vectors = np.empty((0, self.vector_size), dtype=np.float32)
+                # Remove the incompatible files so startup auto-generation triggers
+                try:
+                    self.vectors_file.unlink(missing_ok=True)
+                    (self.storage_path / "ids.json").unlink(missing_ok=True)
+                    (self.storage_path / "metadata.json").unlink(missing_ok=True)
+                except Exception:
+                    pass
+            else:
+                self.vectors = loaded
         else:
             self.vectors = np.empty((0, self.vector_size), dtype=np.float32)
         

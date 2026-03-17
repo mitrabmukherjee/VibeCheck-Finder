@@ -21,6 +21,7 @@ from models.schemas import (
 )
 from ml_engine.ml_engine import MLEngine
 from ml_engine.hybrid_search import HybridSearchEngine
+from ml_engine.query_parser import parse as parse_query
 from database.postgres import PostgresDatabase
 from database.vector_db import VectorDatabase
 from database.file_vector_db import FileVectorDatabase
@@ -174,7 +175,10 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 
 
 # CORS configuration
-cors_origins = os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",")
+cors_origins = os.getenv(
+    "CORS_ORIGINS",
+    "http://localhost:3000,http://localhost:3001,http://127.0.0.1:3000,http://127.0.0.1:3001"
+).split(",")
 cors_origins = [origin.strip() for origin in cors_origins]
 
 app.add_middleware(
@@ -230,54 +234,160 @@ async def recommend(request: RecommendationRequest) -> RecommendationResponse:
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail="Search service temporarily unavailable."
             )
-        
-        # Step 1: Vectorize
-        query_vector = ml_engine.vectorize_query(request.query)
+
+        # Step 1: Parse query — extract intent, media_type, year, clean text
+        parsed = parse_query(request.query)
+        logger.info(
+            f"[PARSED] intent={parsed.intent}, media_type={parsed.media_type}, "
+            f"year={parsed.year}, clean_query={parsed.clean_query!r}"
+        )
+
+        # Step 2: Embed the clean query (strips noise like "movie", "from 2019")
+        # so the semantic vector reflects pure emotional/conceptual content.
+        embed_text = parsed.clean_query if parsed.clean_query else request.query
+        query_vector = ml_engine.vectorize_query(embed_text)
         query_vector_list = query_vector[0].tolist()
-        
-        # Step 2: Search
-        search_top_k = request.top_k * 3 if request.filters else request.top_k
+
+        # Step 3: Semantic vector search — fetch a wider pool for re-ranking.
+        # Genre/media_type filtering is applied after vector search, so we
+        # fetch a much larger candidate pool to ensure enough items survive
+        # the filter (a genre may cover only ~5-15% of the corpus).
+        has_filters = bool(request.filters) or parsed.media_type or parsed.year or parsed.genre
+        if parsed.genre:
+            search_top_k = max(request.top_k * 15, 150)
+        elif has_filters:
+            search_top_k = request.top_k * 5
+        else:
+            search_top_k = request.top_k * 2
         search_results = vector_db.search(query_vector=query_vector_list, top_k=search_top_k)
-        
+
+        # Step 4: Hybrid re-rank with tiered priority model
         if hybrid_search:
-            search_results = hybrid_search.search(request.query, search_results, search_top_k)
-            
-        # Deduplicate
-        seen_ids = set()
-        unique_results = [r for r in search_results if not (r['id'] in seen_ids or seen_ids.add(r['id']))]
-        
+            search_results = hybrid_search.search(
+                request.query,
+                search_results,
+                search_top_k,
+                parsed_query=parsed,
+            )
+
+        # Deduplicate by id
+        seen_ids: set = set()
+        unique_results = [
+            r for r in search_results
+            if not (r["id"] in seen_ids or seen_ids.add(r["id"]))
+        ]
+
         if not unique_results:
             return RecommendationResponse(results=[], query_time_ms=(time.time() - start_time) * 1000)
 
-        # Step 4: Metadata
+        # Step 5: Fetch metadata from Postgres
         media_ids = [result["id"] for result in unique_results]
         media_objects = postgres_db.get_media_by_ids(media_ids)
         media_map = {media["id"]: media for media in media_objects}
-        
-        # Step 6: Filter & Merge
-        recommendations = []
+
+        # Step 6: Build effective filters from request + auto-extracted params.
+        #
+        # HARD filters  (media_type, year, rating) — items that fail are skipped.
+        # SOFT filter   (genre) — items are bucketed: genre matches come first,
+        #               non-genre matches fill remaining slots.  This means
+        #               "documentary about politician" returns documentaries first,
+        #               then other genres that semantically match "politician".
+        import re as _re
+        import json as _json
+
+        def _norm_genre(s: str) -> str:
+            return _re.sub(r'[-_\s]+', '', s.lower())
+
+        def _get_meta(media: Dict[str, Any]) -> Dict[str, Any]:
+            meta = media.get("metadata") or {}
+            if isinstance(meta, str):
+                try:
+                    meta = _json.loads(meta)
+                except Exception:
+                    meta = {}
+            return meta if isinstance(meta, dict) else {}
+
+        effective_filters: Dict[str, Any] = dict(request.filters or {})
+        if parsed.media_type and "media_type" not in effective_filters:
+            effective_filters["media_type"] = parsed.media_type
+        if parsed.year:
+            # Use a ±1 year window so "show from 2019" also surfaces 2018/2020
+            # content — exact year matches are rare and zero results is worse
+            # than a near-year result.  Explicit min_year/max_year from the
+            # request filters always take precedence.
+            if "min_year" not in effective_filters:
+                effective_filters["min_year"] = parsed.year - 1
+            if "max_year" not in effective_filters:
+                effective_filters["max_year"] = parsed.year + 1
+
+        # Genre is extracted separately for soft bucketing
+        genre_filter: str | None = None
+        if parsed.genre and "genre" not in effective_filters:
+            genre_filter = parsed.genre
+        elif "genre" in effective_filters:
+            genre_filter = effective_filters.pop("genre")
+
+        def _matches_genre(media: Dict[str, Any], target_genre: str) -> bool:
+            meta = _get_meta(media)
+            genres = meta.get("genres") or meta.get("genre") or []
+            if isinstance(genres, str):
+                genres = [genres]
+            norm = _norm_genre(target_genre)
+            return any(norm in _norm_genre(g) or _norm_genre(g) in norm for g in genres)
+
+        def _passes_hard_filters(media: Dict[str, Any]) -> bool:
+            if not effective_filters:
+                return True
+            if "media_type" in effective_filters and media["media_type"] != effective_filters["media_type"]:
+                return False
+            meta = _get_meta(media)
+            release_year = meta.get("year") or meta.get("release_year")
+            if "min_year" in effective_filters and release_year:
+                if int(release_year) < int(effective_filters["min_year"]):
+                    return False
+            if "max_year" in effective_filters and release_year:
+                if int(release_year) > int(effective_filters["max_year"]):
+                    return False
+            if "min_rating" in effective_filters:
+                rating = meta.get("rating")
+                if rating is not None and float(rating) < float(effective_filters["min_rating"]):
+                    return False
+            return True
+
+        # Two buckets: genre matches first, then semantically-relevant others
+        genre_bucket: List[MediaRecommendation] = []
+        other_bucket: List[MediaRecommendation] = []
+
         for result in unique_results:
             media_id = result["id"]
-            if media_id not in media_map: continue
-            
+            if media_id not in media_map:
+                continue
             media = media_map[media_id]
-            
-            # Application level filtering
-            if request.filters:
-                if "media_type" in request.filters and media["media_type"] != request.filters["media_type"]: continue
-                # (Additional filters omitted for brevity, kept same as your original logic)
 
-            recommendations.append(MediaRecommendation(
+            if not _passes_hard_filters(media):
+                continue
+
+            rec = MediaRecommendation(
                 id=media_id,
                 title=media["title"],
                 description=media["description"],
                 media_type=media["media_type"],
                 metadata=MediaMetadata(**media.get("metadata", {})),
-                similarity_score=result["score"]
-            ))
-            if len(recommendations) >= request.top_k: break
-        
-        recommendations.sort(key=lambda x: x.similarity_score, reverse=True)
+                similarity_score=result["score"],
+            )
+
+            if genre_filter:
+                if _matches_genre(media, genre_filter):
+                    genre_bucket.append(rec)
+                else:
+                    other_bucket.append(rec)
+            else:
+                genre_bucket.append(rec)
+
+        # Sort each bucket by score, then combine: genre first, others after
+        genre_bucket.sort(key=lambda x: x.similarity_score, reverse=True)
+        other_bucket.sort(key=lambda x: x.similarity_score, reverse=True)
+        recommendations = (genre_bucket + other_bucket)[:request.top_k]
         query_time_ms = (time.time() - start_time) * 1000
         
         logger.info(f"[RESPONSE] results_count={len(recommendations)}, query_time_ms={query_time_ms:.2f}")

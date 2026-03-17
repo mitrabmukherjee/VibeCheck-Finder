@@ -6,7 +6,7 @@ the frontend and backend, including request validation and response formatting.
 """
 
 from typing import Optional, Dict, Any, List
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, field_validator
 from datetime import datetime
 
 
@@ -243,23 +243,10 @@ class RecommendationResponse(BaseModel):
         description="Query processing time in milliseconds"
     )
     
-    @model_validator(mode='after')
-    def validate_results_sorted(self) -> 'RecommendationResponse':
-        """
-        Validate that results are sorted by similarity_score in descending order.
-        
-        Requirements:
-            - 5.4: Ensure results are sorted by similarity_score descending
-        """
-        if len(self.results) > 1:
-            for i in range(len(self.results) - 1):
-                if self.results[i].similarity_score < self.results[i + 1].similarity_score:
-                    raise ValueError(
-                        f"Results must be sorted by similarity_score descending. "
-                        f"Found {self.results[i].similarity_score} before "
-                        f"{self.results[i + 1].similarity_score} at index {i}"
-                    )
-        return self
+    # Results are ordered by relevance: genre-matching items first (sorted by
+    # score), then semantically-relevant items from other genres (also sorted
+    # by score).  This intentionally breaks strict similarity_score descending
+    # order, so the previous sort validator has been removed.
 
 
 class ErrorResponse(BaseModel):

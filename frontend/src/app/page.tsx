@@ -6,6 +6,15 @@ import { MediaRecommendation } from '@/types'
 import MediaModal from '@/components/MediaModal'
 import LandingHero from '@/components/LandingHero'
 
+const EXAMPLE_QUERIES = [
+  "a dark psychological thriller where you can't trust anyone",
+  'sci-fi about AI taking over humanity',
+  'comedy tv show about awkward office life',
+  'documentary about a real crime',
+  'something that makes you question everything',
+  'action movie with a female lead who seeks revenge',
+]
+
 const GENRES = [
   { name: 'Action',      emoji: '🎬' },
   { name: 'Sci-Fi',      emoji: '🚀' },
@@ -82,8 +91,10 @@ export default function Home() {
   const [error, setError]               = useState<string | null>(null)
   const [dark, setDark]                 = useState(false)
   const [expandedIds, setExpandedIds]   = useState<Set<string>>(new Set())
-  const [selectedMedia, setSelectedMedia] = useState<MediaRecommendation | null>(null)
-  const inputRef = useRef<HTMLInputElement>(null)
+  const [selectedMedia, setSelectedMedia]   = useState<MediaRecommendation | null>(null)
+  const [inputFocused, setInputFocused]     = useState(false)
+  const inputRef        = useRef<HTMLInputElement>(null)
+  const searchWrapperRef = useRef<HTMLDivElement>(null)
 
   // Restore dark mode from localStorage / system preference
   useEffect(() => {
@@ -101,14 +112,29 @@ export default function Home() {
     document.documentElement.classList.toggle('dark', dark)
   }, [dark])
 
-  // ⌘K / Ctrl+K → focus search, Escape → blur
+  // Close suggestions when clicking outside the search wrapper
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (searchWrapperRef.current && !searchWrapperRef.current.contains(e.target as Node)) {
+        setInputFocused(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  // ⌘K / Ctrl+K → focus search, Escape → close suggestions + blur
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
         e.preventDefault()
         inputRef.current?.focus()
+        setInputFocused(true)
       }
-      if (e.key === 'Escape') inputRef.current?.blur()
+      if (e.key === 'Escape') {
+        setInputFocused(false)
+        inputRef.current?.blur()
+      }
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
@@ -223,18 +249,11 @@ export default function Home() {
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
 
-        {/* ---- Hero backdrop (hidden once user starts typing) ---- */}
-        {!query && (
-          <div className="pt-6">
-            <LandingHero dark={dark} onSearch={(title) => { setQuery(title); setDisplayCount(12); setExpandedIds(new Set()) }} />
-          </div>
-        )}
-
-        {/* ---- Search bar ---- */}
-        <div className={`${query ? 'py-8' : 'py-6'} max-w-3xl mx-auto mb-8`}>
-          <div className="relative">
+        {/* ---- Search bar — always at the top ---- */}
+        <div className={`${query ? 'pt-8 pb-4' : 'pt-6 pb-4'} max-w-3xl mx-auto mb-6`}>
+          <div ref={searchWrapperRef} className="relative">
             {/* Left icon: spinner while loading, magnifier otherwise */}
-            <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none">
+            <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none z-10">
               {loading ? (
                 <div className={`w-5 h-5 border-2 rounded-full animate-spin ${
                   dark ? 'border-gray-600 border-t-red-500' : 'border-gray-300 border-t-red-500'
@@ -251,16 +270,17 @@ export default function Home() {
               type="text"
               value={query}
               onChange={handleChange}
-              placeholder="Try: 'a dark psychological thriller where you can't trust anyone'..."
-              className={`w-full pl-12 pr-16 py-4 border-2 rounded-2xl focus:outline-none transition-all ${!query ? 'text-lg' : ''} ${
+              onFocus={() => setInputFocused(true)}
+              placeholder="Describe a vibe, mood, or title…"
+              className={`w-full pl-12 pr-16 py-4 border-2 rounded-2xl focus:outline-none transition-all text-base ${
                 dark
                   ? 'text-white bg-gray-800 border-gray-700 placeholder-gray-500 focus:border-red-500'
                   : 'text-gray-900 bg-white border-gray-200 placeholder-gray-400 focus:border-red-500'
-              }`}
+              } ${inputFocused && !query ? 'rounded-b-none border-b-0' : ''}`}
             />
 
             {/* Right: ⌘K hint or clear button */}
-            <div className="absolute inset-y-0 right-4 flex items-center gap-2">
+            <div className="absolute inset-y-0 right-4 flex items-center gap-2 z-10">
               {query ? (
                 <button
                   onClick={clearQuery}
@@ -281,8 +301,50 @@ export default function Home() {
                 </kbd>
               )}
             </div>
+
+            {/* ---- Suggestions dropdown ---- */}
+            {inputFocused && !query && (
+              <div className={`absolute left-0 right-0 top-full z-50 border-2 border-t-0 rounded-b-2xl overflow-hidden shadow-xl ${
+                dark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'
+              }`}>
+                <p className={`px-4 pt-3 pb-1 text-xs font-semibold uppercase tracking-widest ${
+                  dark ? 'text-gray-500' : 'text-gray-400'
+                }`}>
+                  Try asking
+                </p>
+                {EXAMPLE_QUERIES.map((q, i) => (
+                  <button
+                    key={q}
+                    onMouseDown={(e) => {
+                      e.preventDefault()
+                      setQuery(q)
+                      setDisplayCount(12)
+                      setExpandedIds(new Set())
+                      setInputFocused(false)
+                    }}
+                    className={`w-full flex items-center gap-3 px-4 py-3 text-sm text-left transition-colors ${
+                      dark
+                        ? 'text-gray-300 hover:bg-gray-700 hover:text-white'
+                        : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900'
+                    } ${i < EXAMPLE_QUERIES.length - 1 ? (dark ? 'border-b border-gray-700/50' : 'border-b border-gray-100') : ''}`}
+                  >
+                    <svg className={`w-4 h-4 flex-shrink-0 ${dark ? 'text-gray-600' : 'text-gray-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                    {q}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         </div>
+
+        {/* ---- Hero backdrop (hidden once user starts typing) ---- */}
+        {!query && (
+          <div>
+            <LandingHero dark={dark} onSearch={(title) => { setQuery(title); setDisplayCount(12); setExpandedIds(new Set()) }} />
+          </div>
+        )}
 
         {/* ---- Landing content: genre cards + stats ---- */}
         {!query && (

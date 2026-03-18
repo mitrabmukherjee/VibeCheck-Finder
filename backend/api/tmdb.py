@@ -221,6 +221,70 @@ def get_trailer(tmdb_id: int, media_type: str) -> Optional[str]:
     return None
 
 # ---------------------------------------------------------------------------
+# Landing page: trending + upcoming content
+# ---------------------------------------------------------------------------
+def get_landing_data() -> Dict[str, Any]:
+    """Fetch trending movies, trending TV, and upcoming movies from TMDB."""
+    cache_key = "landing_data"
+    cached = _cache_get(cache_key)
+    if cached is not None:
+        return cached
+
+    def _fmt(item: Dict, media_type: str) -> Dict:
+        raw_date = item.get("release_date") or item.get("first_air_date") or ""
+        return {
+            "tmdb_id":   item.get("id"),
+            "title":     item.get("title") or item.get("name", ""),
+            "overview":  item.get("overview", ""),
+            "backdrop":  f"{TMDB_IMAGE_BASE}/original{item['backdrop_path']}"
+                         if item.get("backdrop_path") else None,
+            "poster":    f"{TMDB_IMAGE_BASE}/w342{item['poster_path']}"
+                         if item.get("poster_path") else None,
+            "rating":    round(item.get("vote_average", 0), 1),
+            "year":      raw_date[:4] if raw_date else "",
+            "media_type": media_type,
+        }
+
+    try:
+        r = _get(f"{TMDB_BASE}/trending/movie/week", {"api_key": _api_key(), "language": "en-US"})
+        trending_movies = [
+            _fmt(i, "movie") for i in r.json().get("results", [])[:16]
+            if i.get("poster_path")
+        ]
+        time.sleep(0.2)
+
+        r = _get(f"{TMDB_BASE}/trending/tv/week", {"api_key": _api_key(), "language": "en-US"})
+        trending_tv = [
+            _fmt(i, "tv") for i in r.json().get("results", [])[:16]
+            if i.get("poster_path")
+        ]
+        time.sleep(0.2)
+
+        r = _get(f"{TMDB_BASE}/movie/upcoming", {
+            "api_key": _api_key(), "language": "en-US", "region": _region()
+        })
+        upcoming = [
+            _fmt(i, "movie") for i in r.json().get("results", [])[:16]
+            if i.get("poster_path")
+        ]
+
+        # Hero candidates: top trending with backdrops
+        hero_candidates = [i for i in trending_movies if i.get("backdrop")]
+        result = {
+            "hero":             hero_candidates[:6],
+            "trending_movies":  trending_movies,
+            "trending_tv":      trending_tv,
+            "upcoming":         upcoming,
+        }
+        _cache_set(cache_key, result)
+        return result
+
+    except Exception as exc:
+        logger.warning(f"Landing data fetch failed: {exc}")
+        return {"hero": [], "trending_movies": [], "trending_tv": [], "upcoming": []}
+
+
+# ---------------------------------------------------------------------------
 # Public: fetch everything at once
 # ---------------------------------------------------------------------------
 def get_full_details(title: str, year: Optional[int], media_type: str) -> Dict[str, Any]:

@@ -26,7 +26,7 @@ from database.postgres import PostgresDatabase
 from database.vector_db import VectorDatabase
 from database.file_vector_db import FileVectorDatabase
 from database.postgres_vector_db import PostgresVectorDatabase
-from api.tmdb import get_full_details
+from api.tmdb import get_full_details, get_landing_data
 
 # Load environment variables
 load_dotenv()
@@ -449,7 +449,20 @@ def media_details(media_id: str):
     }
 
 
-# --- ADDED SECTION ---
+@app.get("/landing")
+def landing():
+    """
+    Returns trending movies, trending TV shows, and upcoming movies from TMDB.
+    Used to populate the Netflix-style landing page hero + rows.
+    Results are cached in-memory for 24 h.
+    """
+    try:
+        return get_landing_data()
+    except Exception as exc:
+        logger.error(f"Landing data error: {exc}", exc_info=True)
+        return {"hero": [], "trending_movies": [], "trending_tv": [], "upcoming": []}
+
+
 if __name__ == "__main__":
     import uvicorn
     # Pull port from environment (standard for Docker/Cloud) or default to 8000

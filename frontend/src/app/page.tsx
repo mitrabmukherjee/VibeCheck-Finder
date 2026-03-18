@@ -4,15 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { apiClient } from '@/lib/api'
 import { MediaRecommendation } from '@/types'
 import MediaModal from '@/components/MediaModal'
-
-const EXAMPLE_QUERIES = [
-  "a dark psychological thriller where you can't trust anyone",
-  'sci-fi about AI taking over humanity',
-  'comedy tv show about office life',
-  'documentary about a real crime',
-  'something that makes you question everything',
-  'action movie with a female lead who seeks revenge',
-]
+import LandingHero from '@/components/LandingHero'
 
 const GENRES = [
   { name: 'Action',      emoji: '🎬' },
@@ -231,21 +223,15 @@ export default function Home() {
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
 
-        {/* ---- Hero (hidden once user starts typing) ---- */}
+        {/* ---- Hero backdrop (hidden once user starts typing) ---- */}
         {!query && (
-          <div className="text-center py-16 sm:py-24">
-            <h2 className="text-5xl sm:text-6xl lg:text-7xl font-bold mb-6">
-              <div className={dark ? 'text-white' : 'text-gray-900'}>Find your next</div>
-              <div className="text-red-600">cinematic obsession.</div>
-            </h2>
-            <p className={`text-lg sm:text-xl max-w-2xl mx-auto mb-12 ${dark ? 'text-gray-400' : 'text-gray-500'}`}>
-              Describe an emotion, a scenario, or a vibe. Our AI finds what you mean — not just what you type.
-            </p>
+          <div className="pt-6">
+            <LandingHero dark={dark} onSearch={(title) => { setQuery(title); setDisplayCount(12); setExpandedIds(new Set()) }} />
           </div>
         )}
 
         {/* ---- Search bar ---- */}
-        <div className={`${query ? 'py-8' : ''} max-w-3xl mx-auto mb-8`}>
+        <div className={`${query ? 'py-8' : 'py-6'} max-w-3xl mx-auto mb-8`}>
           <div className="relative">
             {/* Left icon: spinner while loading, magnifier otherwise */}
             <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none">
@@ -298,31 +284,9 @@ export default function Home() {
           </div>
         </div>
 
-        {/* ---- Landing content: example queries + genre cards + stats ---- */}
+        {/* ---- Landing content: genre cards + stats ---- */}
         {!query && (
           <div>
-            {/* Example query pills */}
-            <div className="max-w-3xl mx-auto mb-16">
-              <p className={`text-xs font-semibold uppercase tracking-widest mb-3 text-center ${dark ? 'text-gray-500' : 'text-gray-400'}`}>
-                Try asking
-              </p>
-              <div className="flex flex-wrap justify-center gap-2">
-                {EXAMPLE_QUERIES.map(q => (
-                  <button
-                    key={q}
-                    onClick={() => setQuery(q)}
-                    className={`px-4 py-2 rounded-full text-sm border transition-all hover:scale-105 ${
-                      dark
-                        ? 'bg-gray-800 border-gray-700 text-gray-300 hover:border-red-500 hover:text-red-400'
-                        : 'bg-white border-gray-200 text-gray-600 hover:border-red-400 hover:text-red-600'
-                    }`}
-                  >
-                    {q}
-                  </button>
-                ))}
-              </div>
-            </div>
-
             {/* Genre cards */}
             <div className="mb-16">
               <p className={`text-xs font-semibold uppercase tracking-widest mb-6 text-center ${dark ? 'text-gray-500' : 'text-gray-400'}`}>

@@ -86,7 +86,10 @@ function TrendingRow({ title, items, dark, onSearch }: {
 
   return (
     <div className="mb-10">
-      <h3 className={`text-base font-bold mb-3 ${dark ? 'text-white' : 'text-gray-900'}`}>{title}</h3>
+      <div className="flex items-center justify-between mb-3">
+        <h3 className={`text-base font-bold ${dark ? 'text-white' : 'text-gray-900'}`}>{title}</h3>
+        <span className={`text-xs sm:hidden ${dark ? 'text-gray-600' : 'text-gray-400'}`}>swipe →</span>
+      </div>
       <div className="relative group/row">
         {/* Left arrow */}
         <button

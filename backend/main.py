@@ -26,6 +26,8 @@ from database.postgres import PostgresDatabase
 from database.vector_db import VectorDatabase
 from database.file_vector_db import FileVectorDatabase
 from database.postgres_vector_db import PostgresVectorDatabase
+import json as _json
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from api.tmdb import get_full_details, get_landing_data, get_poster_images
 
 # Load environment variables
@@ -447,6 +449,50 @@ def media_details(media_id: str):
         "media_type":  media_type,
         **details,
     }
+
+
+@app.post("/media/posters")
+def media_posters_batch(body: dict):
+    """
+    Batch poster endpoint — fetches poster + backdrop for up to 20 media items in parallel.
+    Returns a map of { media_id: { poster, backdrop } }.
+    """
+    if postgres_db is None:
+        raise HTTPException(status_code=503, detail="Service temporarily unavailable.")
+
+    ids: list = body.get("ids", [])[:20]
+    if not ids:
+        return {}
+
+    items = postgres_db.get_media_by_ids(ids)
+    media_map = {str(item["id"]): item for item in items}
+
+    def _fetch_one(media_id: str):
+        item = media_map.get(media_id)
+        if not item:
+            return media_id, {"poster": None, "backdrop": None}
+        meta = item.get("metadata") or {}
+        if isinstance(meta, str):
+            try:
+                meta = _json.loads(meta)
+            except Exception:
+                meta = {}
+        year = meta.get("year") or meta.get("release_year")
+        year = int(year) if year else None
+        try:
+            imgs = get_poster_images(item["title"], year, item["media_type"])
+        except Exception:
+            imgs = {"poster": None, "backdrop": None}
+        return media_id, imgs
+
+    result: dict = {}
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        futures = {pool.submit(_fetch_one, mid): mid for mid in ids}
+        for future in as_completed(futures):
+            mid, imgs = future.result()
+            result[mid] = imgs
+
+    return result
 
 
 @app.get("/media/{media_id}/poster")

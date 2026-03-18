@@ -32,9 +32,12 @@ interface TMDBDetails {
 }
 
 interface Props {
-  media:   MediaRecommendation
-  dark:    boolean
-  onClose: () => void
+  media:         MediaRecommendation
+  dark:          boolean
+  onClose:       () => void
+  results?:      MediaRecommendation[]
+  currentIndex?: number
+  onNavigate?:   (media: MediaRecommendation) => void
 }
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
@@ -66,7 +69,10 @@ function rescaleScore(raw: number): number {
 // ---------------------------------------------------------------------------
 // Main modal component
 // ---------------------------------------------------------------------------
-export default function MediaModal({ media, dark, onClose }: Props) {
+export default function MediaModal({
+  media, dark, onClose,
+  results = [], currentIndex = -1, onNavigate,
+}: Props) {
   const [details, setDetails]   = useState<TMDBDetails | null>(null)
   const [loading, setLoading]   = useState(true)
   const [fetchErr, setFetchErr] = useState(false)
@@ -93,12 +99,20 @@ export default function MediaModal({ media, dark, onClose }: Props) {
     return () => { cancelled = true }
   }, [media.id])
 
-  // Close on Escape
+  // Keyboard: Escape to close, ← → to navigate
   useEffect(() => {
-    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { onClose(); return }
+      if (e.key === 'ArrowLeft'  && onNavigate && currentIndex > 0) {
+        onNavigate(results[currentIndex - 1])
+      }
+      if (e.key === 'ArrowRight' && onNavigate && currentIndex < results.length - 1) {
+        onNavigate(results[currentIndex + 1])
+      }
+    }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [onClose])
+  }, [onClose, onNavigate, results, currentIndex])
 
   // Prevent body scroll while modal is open
   useEffect(() => {
@@ -113,6 +127,8 @@ export default function MediaModal({ media, dark, onClose }: Props) {
                   'bg-gray-500 text-white'
 
   const d = dark
+  const hasPrev = onNavigate && currentIndex > 0
+  const hasNext = onNavigate && currentIndex < results.length - 1
 
   return (
     /* Backdrop */
@@ -122,6 +138,44 @@ export default function MediaModal({ media, dark, onClose }: Props) {
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fadeInUp"
       style={{ animationDuration: '0.2s' }}
     >
+      {/* ← Prev arrow */}
+      {hasPrev && (
+        <button
+          onClick={() => onNavigate!(results[currentIndex - 1])}
+          className="absolute left-3 sm:left-6 top-1/2 -translate-y-1/2 z-10
+                     w-10 h-10 rounded-full bg-black/60 hover:bg-black/80
+                     flex items-center justify-center text-white transition-colors"
+          aria-label="Previous"
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+          </svg>
+        </button>
+      )}
+
+      {/* → Next arrow */}
+      {hasNext && (
+        <button
+          onClick={() => onNavigate!(results[currentIndex + 1])}
+          className="absolute right-3 sm:right-6 top-1/2 -translate-y-1/2 z-10
+                     w-10 h-10 rounded-full bg-black/60 hover:bg-black/80
+                     flex items-center justify-center text-white transition-colors"
+          aria-label="Next"
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+          </svg>
+        </button>
+      )}
+
+      {/* Position counter */}
+      {results.length > 1 && currentIndex >= 0 && (
+        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-10
+                        px-3 py-1 rounded-full bg-black/60 text-white text-xs font-medium">
+          {currentIndex + 1} / {results.length}
+        </div>
+      )}
+
       {/* Panel */}
       <div className={`relative w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl shadow-2xl ${
         d ? 'bg-gray-900 text-white' : 'bg-white text-gray-900'

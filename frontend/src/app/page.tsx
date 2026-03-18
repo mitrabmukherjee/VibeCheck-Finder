@@ -224,7 +224,7 @@ export default function Home() {
   const [inputFocused, setInputFocused] = useState(false)
 
   // filters
-  const [filterType,   setFilterType]   = useState<'' | 'movie' | 'tv_show'>('')
+  const [filterType,   setFilterType]   = useState<'' | 'book' | 'tv_show'>('')
   const [filterRating, setFilterRating] = useState<'' | '7' | '8' | '9'>('')
   const [filterDecade, setFilterDecade] = useState<string>('')
 
@@ -515,9 +515,9 @@ export default function Home() {
           <div className={`max-w-3xl mx-auto mb-6 pt-3 pb-1`}>
             <div className="flex items-center gap-2 flex-wrap">
               {/* Type */}
-              <FilterPill label="All"     active={filterType === ''}         dark={dark} onClick={() => setFilterType('')} />
-              <FilterPill label="Movies"  active={filterType === 'movie'}    dark={dark} onClick={() => setFilterType(t => t === 'movie'    ? '' : 'movie')} />
-              <FilterPill label="TV"      active={filterType === 'tv_show'}  dark={dark} onClick={() => setFilterType(t => t === 'tv_show'  ? '' : 'tv_show')} />
+              <FilterPill label="All"     active={filterType === ''}        dark={dark} onClick={() => setFilterType('')} />
+              <FilterPill label="Movies"  active={filterType === 'book'}    dark={dark} onClick={() => setFilterType(t => t === 'book'    ? '' : 'book')} />
+              <FilterPill label="TV"      active={filterType === 'tv_show'} dark={dark} onClick={() => setFilterType(t => t === 'tv_show' ? '' : 'tv_show')} />
 
               <span className={`w-px h-4 ${dark ? 'bg-gray-700' : 'bg-gray-300'}`} />
 

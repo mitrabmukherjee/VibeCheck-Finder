@@ -26,6 +26,7 @@ from database.postgres import PostgresDatabase
 from database.vector_db import VectorDatabase
 from database.file_vector_db import FileVectorDatabase
 from database.postgres_vector_db import PostgresVectorDatabase
+from api.tmdb import get_full_details
 
 # Load environment variables
 load_dotenv()
@@ -397,6 +398,56 @@ async def recommend(request: RecommendationRequest) -> RecommendationResponse:
     except Exception as e:
         logger.error(f"Unexpected error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error")
+
+@app.get("/media/{media_id}/details")
+def media_details(media_id: str):
+    """
+    Return TMDB-enriched details for a single media item:
+      - cast (top 10)
+      - streaming providers (region-aware)
+      - trailer YouTube URL
+    """
+    if postgres_db is None:
+        raise HTTPException(status_code=503, detail="Service temporarily unavailable.")
+
+    # Fetch the media item from Postgres to get title / year / media_type
+    items = postgres_db.get_media_by_ids([media_id])
+    if not items:
+        raise HTTPException(status_code=404, detail="Media item not found.")
+
+    item = items[0]
+    title      = item["title"]
+    media_type = item["media_type"]
+
+    # Extract year from metadata JSONB
+    meta = item.get("metadata") or {}
+    if isinstance(meta, str):
+        import json as _json
+        try:
+            meta = _json.loads(meta)
+        except Exception:
+            meta = {}
+    year = meta.get("year") or meta.get("release_year")
+    year = int(year) if year else None
+
+    try:
+        details = get_full_details(title, year, media_type)
+    except Exception as exc:
+        logger.error(f"TMDB enrichment failed for '{title}': {exc}", exc_info=True)
+        details = {
+            "tmdb_id":   None,
+            "cast":      [],
+            "providers": {"flatrate": [], "rent": [], "buy": [], "link": None},
+            "trailer":   None,
+        }
+
+    return {
+        "id":          media_id,
+        "title":       title,
+        "media_type":  media_type,
+        **details,
+    }
+
 
 # --- ADDED SECTION ---
 if __name__ == "__main__":

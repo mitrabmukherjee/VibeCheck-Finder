@@ -221,6 +221,38 @@ def get_trailer(tmdb_id: int, media_type: str) -> Optional[str]:
     return None
 
 # ---------------------------------------------------------------------------
+# Poster + backdrop images only (lightweight — no cast/providers)
+# ---------------------------------------------------------------------------
+def get_poster_images(title: str, year: Optional[int], media_type: str) -> Dict[str, Optional[str]]:
+    """Return poster and backdrop URLs for a single title. Very fast — cached."""
+    cache_key = f"images::{media_type}::{title}::{year}"
+    cached = _cache_get(cache_key)
+    if cached is not None:
+        return cached
+
+    tmdb_id = search_tmdb(title, year, media_type)
+    if not tmdb_id:
+        result: Dict[str, Optional[str]] = {"poster": None, "backdrop": None}
+        _cache_set(cache_key, result)
+        return result
+
+    kind = _tmdb_type(media_type)
+    try:
+        r = _get(f"{TMDB_BASE}/{kind}/{tmdb_id}", {"api_key": _api_key()})
+        data = r.json()
+        result = {
+            "poster":   f"{TMDB_IMAGE_BASE}/w342{data['poster_path']}"   if data.get("poster_path")   else None,
+            "backdrop": f"{TMDB_IMAGE_BASE}/w780{data['backdrop_path']}" if data.get("backdrop_path") else None,
+        }
+    except Exception as exc:
+        logger.warning(f"TMDB image fetch failed for '{title}' (id={tmdb_id}): {exc}")
+        result = {"poster": None, "backdrop": None}
+
+    _cache_set(cache_key, result)
+    return result
+
+
+# ---------------------------------------------------------------------------
 # Landing page: trending + upcoming content
 # ---------------------------------------------------------------------------
 def get_landing_data() -> Dict[str, Any]:

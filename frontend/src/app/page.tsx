@@ -56,6 +56,126 @@ function SkeletonCard({ dark }: { dark: boolean }) {
 }
 
 // ---------------------------------------------------------------------------
+// Wallpaper grid card for each search result
+// ---------------------------------------------------------------------------
+function MediaCard({
+  result, dark, onClick,
+}: {
+  result: MediaRecommendation
+  dark: boolean
+  onClick: () => void
+}) {
+  const [images, setImages] = useState<{ poster: string | null; backdrop: string | null } | null>(null)
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+
+  useEffect(() => {
+    let cancelled = false
+    fetch(`${apiUrl}/media/${result.id}/poster`)
+      .then(r => r.json())
+      .then(d => { if (!cancelled) setImages(d) })
+      .catch(() => { if (!cancelled) setImages({ poster: null, backdrop: null }) })
+    return () => { cancelled = true }
+  }, [result.id, apiUrl])
+
+  const pct = rescaleScore(result.similarity_score)
+  const scoreCls = pct >= 80 ? 'bg-green-500' : pct >= 65 ? 'bg-yellow-500' : 'bg-gray-500'
+  const bg = images?.backdrop || images?.poster
+
+  return (
+    <div
+      onClick={onClick}
+      className="group relative aspect-video rounded-xl overflow-hidden cursor-pointer
+                 ring-2 ring-transparent hover:ring-red-500 transition-all duration-200 hover:scale-[1.02]"
+    >
+      {/* Background image or gradient placeholder */}
+      {bg ? (
+        <img
+          src={bg}
+          alt={result.title}
+          className="absolute inset-0 w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+          loading="lazy"
+        />
+      ) : (
+        <div className={`absolute inset-0 flex items-center justify-center
+          ${images === null
+            ? (dark ? 'bg-gray-800 animate-pulse' : 'bg-gray-200 animate-pulse')
+            : 'bg-gradient-to-br from-gray-800 via-gray-900 to-black'
+          }`}
+        >
+          {images !== null && (
+            <span className="text-6xl opacity-30">
+              {result.media_type === 'tv_show' ? '📺' : '🎬'}
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* Permanent bottom gradient */}
+      <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/10 to-transparent" />
+
+      {/* Score badge — top right */}
+      <div className="absolute top-3 right-3">
+        <span className={`text-xs font-bold px-2.5 py-1 rounded-md text-white ${scoreCls}`}>
+          {pct}%
+        </span>
+      </div>
+
+      {/* Default bottom info */}
+      <div className="absolute bottom-0 left-0 right-0 p-4
+                      translate-y-0 group-hover:translate-y-full transition-transform duration-300">
+        <h3 className="text-white font-bold text-sm leading-snug line-clamp-2 mb-1">
+          {result.title}
+        </h3>
+        <div className="flex items-center gap-2 flex-wrap">
+          {result.metadata.year && (
+            <span className="text-gray-300 text-xs">{result.metadata.year}</span>
+          )}
+          {result.metadata.rating && (
+            <span className="text-yellow-400 text-xs">⭐ {result.metadata.rating.toFixed(1)}</span>
+          )}
+          {result.metadata.genre && (
+            <span className="text-gray-400 text-xs bg-black/40 px-1.5 py-0.5 rounded">
+              {result.metadata.genre}
+            </span>
+          )}
+          <span className="text-gray-500 text-xs">
+            {result.media_type === 'tv_show' ? 'TV Show' : 'Movie'}
+          </span>
+        </div>
+      </div>
+
+      {/* Hover overlay with description */}
+      <div className="absolute inset-0 bg-black/80 opacity-0 group-hover:opacity-100
+                      transition-opacity duration-300 flex flex-col justify-end p-4">
+        <h3 className="text-white font-bold text-sm mb-1.5 line-clamp-1">{result.title}</h3>
+        <p className="text-gray-300 text-xs leading-relaxed line-clamp-4 mb-3">
+          {result.description}
+        </p>
+        <div className="flex items-center gap-2 flex-wrap">
+          {result.metadata.year && (
+            <span className="text-gray-400 text-xs">{result.metadata.year}</span>
+          )}
+          {result.metadata.rating && (
+            <span className="text-yellow-400 text-xs">⭐ {result.metadata.rating.toFixed(1)}</span>
+          )}
+          {result.metadata.genre && (
+            <span className="text-xs bg-white/10 text-gray-300 px-2 py-0.5 rounded">
+              {result.metadata.genre}
+            </span>
+          )}
+        </div>
+        <p className="text-red-400 text-xs font-semibold mt-3 flex items-center gap-1">
+          Tap for full details
+          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+          </svg>
+        </p>
+      </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // Match score badge — colour shifts green → yellow → grey by score
 // ---------------------------------------------------------------------------
 function ScoreBadge({ score }: { score: number }) {
@@ -420,7 +540,7 @@ export default function Home() {
               </div>
             )}
 
-            {/* Result cards */}
+            {/* Result grid */}
             {!loading && !error && results.length > 0 && (
               <div>
                 <div className={`mb-6 pb-4 border-b ${dark ? 'border-gray-700' : 'border-gray-200'}`}>
@@ -429,90 +549,20 @@ export default function Home() {
                   </p>
                 </div>
 
-                <div className="space-y-4">
-                  {results.map((result, i) => {
-                    const expanded = expandedIds.has(result.id)
-                    const longDesc = result.description.length > 220
-                    return (
-                      <div
-                        key={result.id}
-                        style={{ animationDelay: `${i * 40}ms` }}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {results.map((result, i) => (
+                    <div
+                      key={result.id}
+                      style={{ animationDelay: `${i * 40}ms` }}
+                      className="animate-fadeInUp"
+                    >
+                      <MediaCard
+                        result={result}
+                        dark={dark}
                         onClick={() => setSelectedMedia(result)}
-                        className={`rounded-xl p-6 transition-all duration-200 animate-fadeInUp cursor-pointer ${
-                          dark
-                            ? 'bg-gray-800 hover:bg-gray-700'
-                            : 'bg-white border border-gray-100 hover:border-gray-200 hover:shadow-md'
-                        }`}
-                      >
-                        <div className="flex items-start gap-4">
-                          {/* Icon */}
-                          <div className="flex-shrink-0">
-                            <div className="w-14 h-14 bg-red-500 rounded-xl flex items-center justify-center">
-                              <span className="text-2xl">{result.media_type === 'tv_show' ? '📺' : '🎬'}</span>
-                            </div>
-                          </div>
-
-                          {/* Content */}
-                          <div className="flex-1 min-w-0">
-                            {/* Title + score */}
-                            <div className="flex items-start justify-between gap-4 mb-2">
-                              <h3 className={`text-lg font-bold leading-snug ${dark ? 'text-white' : 'text-gray-900'}`}>
-                                {result.title}
-                              </h3>
-                              <ScoreBadge score={result.similarity_score} />
-                            </div>
-
-                            {/* Metadata pills */}
-                            <div className="flex flex-wrap items-center gap-3 mb-3 text-sm">
-                              {result.metadata.year && (
-                                <span className={`flex items-center gap-1.5 ${dark ? 'text-gray-400' : 'text-gray-500'}`}>
-                                  <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
-                                    <path fillRule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z" clipRule="evenodd" />
-                                  </svg>
-                                  {result.metadata.year}
-                                </span>
-                              )}
-                              {result.metadata.rating && (
-                                <span className={`flex items-center gap-1.5 ${dark ? 'text-gray-400' : 'text-gray-500'}`}>
-                                  <svg className="w-3.5 h-3.5 text-yellow-500" fill="currentColor" viewBox="0 0 20 20">
-                                    <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-                                  </svg>
-                                  {result.metadata.rating.toFixed(1)}
-                                </span>
-                              )}
-                              {result.metadata.genre && (
-                                <span className={`px-2.5 py-0.5 rounded-md text-xs font-medium ${
-                                  dark ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-600'
-                                }`}>
-                                  {result.metadata.genre}
-                                </span>
-                              )}
-                              <span className={`text-xs ${dark ? 'text-gray-500' : 'text-gray-400'}`}>
-                                {result.media_type === 'tv_show' ? 'TV Show' : 'Movie'}
-                              </span>
-                            </div>
-
-                            {/* Description with read more */}
-                            <p className={`text-sm leading-relaxed ${dark ? 'text-gray-400' : 'text-gray-600'}`}>
-                              {expanded || !longDesc
-                                ? result.description
-                                : result.description.slice(0, 220) + '…'}
-                            </p>
-                            {longDesc && (
-                              <button
-                                onClick={e => { e.stopPropagation(); toggleExpand(result.id) }}
-                                className={`text-xs mt-1.5 font-medium ${
-                                  dark ? 'text-red-400 hover:text-red-300' : 'text-red-600 hover:text-red-500'
-                                }`}
-                              >
-                                {expanded ? 'Show less' : 'Read more'}
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    )
-                  })}
+                      />
+                    </div>
+                  ))}
                 </div>
 
                 {/* Load more */}

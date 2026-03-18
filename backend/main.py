@@ -26,7 +26,7 @@ from database.postgres import PostgresDatabase
 from database.vector_db import VectorDatabase
 from database.file_vector_db import FileVectorDatabase
 from database.postgres_vector_db import PostgresVectorDatabase
-from api.tmdb import get_full_details, get_landing_data
+from api.tmdb import get_full_details, get_landing_data, get_poster_images
 
 # Load environment variables
 load_dotenv()
@@ -447,6 +447,39 @@ def media_details(media_id: str):
         "media_type":  media_type,
         **details,
     }
+
+
+@app.get("/media/{media_id}/poster")
+def media_poster(media_id: str):
+    """
+    Lightweight endpoint — returns only poster + backdrop image URLs for a media item.
+    Used to populate the search result grid without fetching full TMDB details.
+    """
+    if postgres_db is None:
+        raise HTTPException(status_code=503, detail="Service temporarily unavailable.")
+
+    items = postgres_db.get_media_by_ids([media_id])
+    if not items:
+        raise HTTPException(status_code=404, detail="Media item not found.")
+
+    item = items[0]
+    meta = item.get("metadata") or {}
+    if isinstance(meta, str):
+        import json as _json
+        try:
+            meta = _json.loads(meta)
+        except Exception:
+            meta = {}
+    year = meta.get("year") or meta.get("release_year")
+    year = int(year) if year else None
+
+    try:
+        images = get_poster_images(item["title"], year, item["media_type"])
+    except Exception as exc:
+        logger.error(f"Poster fetch failed for '{item['title']}': {exc}")
+        images = {"poster": None, "backdrop": None}
+
+    return {"id": media_id, **images}
 
 
 @app.get("/landing")
